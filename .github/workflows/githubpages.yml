@@ -10,19 +10,47 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-#      - name: Run Tests
-#        run: <run the tests with code coverage>
-
       - name: Checkout repository
         uses: actions/checkout@v2
 
       - name: Setup Pages
         uses: actions/configure-pages@v3
 
+      - name: Get last successful run id
+        id: get_run_id
+        run: |
+          RUN_ID=$(curl --silent -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runs" | jq -r '[.workflow_runs[] | select(.name == "Develop workflow" and .conclusion == "success")][0].id')
+          echo $RUN_ID
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+
+      - name: Download old files
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RUN_ID }}
+
+      - name: Untar old files and copy new files
+        run: |
+          tar -xvf artifact.tar -C html && rm artifact.tar
+          mv html/coverage.html html/coverage-$(date +%d-%m-%Y-%H-%M-%S).html
+      - name: Display structure of downloaded files
+        run: ls -R
+
+      - name: Create index.html
+        run: |
+          cd html
+          echo "<html><body>" > index.html
+          for file in coverage-*.html
+          do
+            echo "<a href=\"$file\">$(basename $file)</a><br>" >> index.html
+          done
+          echo "</body></html>" >> index.html
+
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v1
         with:
-          # location of the html files to upload
           path: "./html"
 
   deploy-coverage:
@@ -34,7 +62,6 @@ jobs:
       id-token: write
 
     environment:
-      # environment created automatically by GitHub
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
